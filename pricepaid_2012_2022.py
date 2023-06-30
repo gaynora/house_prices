@@ -15,7 +15,7 @@ pp_2012_pt1 = pandas.read_csv('pp-2012-part1.csv', usecols=[1,3,4,6,7,8], names=
 pp_2012_pt2 = pandas.read_csv('pp-2012-part2.csv', usecols=[1,3,4,6,7,8], names=colnames )
 pp_2022 = pandas.read_csv('pp-2022.csv', usecols=[1,3,4,6,7,8], names=colnames )
 
-# csv but also play around with API directly
+# also API directly
 
 #append 2012 data together - row-wise
 pp_2012 = pp_2012_pt1.append(pp_2012_pt2, ignore_index=True)
