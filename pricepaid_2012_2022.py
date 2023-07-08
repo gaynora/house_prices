@@ -2,6 +2,9 @@
 """
 Analysing HMLR domestic property sale £ prices using the HMLR 'Price Paid' dataset
 Identifying change between 2012 - 2022 for individual properties
+and examining against urban-rural classification, regional patterns, and property type
+checking counts for statistical significance
+all data is open government data under OGL licence
 
 Python3 script
 
@@ -62,7 +65,7 @@ joined = pp_2012.merge(pp_2022, left_on='concat2012', right_on='concat2022', how
 joined['perchange'] = (joined['pricepaid_y'] - joined['pricepaid_x']) / joined['pricepaid_y'] *100
 
 #geocode to perform spatial analysis
-onspd = pandas.read_csv('ONSPD_MAY_2023_UK.csv', usecols=[2,11,12, 40], header=0 ) # data source: https://geoportal.statistics.gov.uk/datasets/ons-postcode-directory-may-2023/about
+onspd = pandas.read_csv('ONSPD_MAY_2023_UK.csv', usecols=[2,11,12, 17,40], header=0 ) # data source: https://geoportal.statistics.gov.uk/datasets/ons-postcode-directory-may-2023/about
 geocoded = joined.merge(onspd, left_on='postcode_y', right_on='pcds', how='left')
 #add additional descriptions to match codes
 urban_rural_class_dict = {"A1": "Major Conurbation", "B1": "Minor Conurbation", "C1": "City and Town", "C2": "City and Town in a Sparse Setting", "D1": "Town and Fringe", "D2":"Town and Fringe in a Sparse Setting", "E1": "Village", "E2": "Village in a Sparse Setting", "F1": "Hamlets and Isolated Dwellings", "F2": "Hamlets and Isolated Dwellings in a Sparse Setting"}
@@ -71,6 +74,8 @@ urban_rural_class_dictb = {"A1": "Urban", "B1": "Urban", "C1": "Urban", "C2": "U
 geocoded['urbrur11b'] = geocoded['ru11ind'].map(urban_rural_class_dictb)
 prop_type_dict = {"T": "Terraced", "S": "Semi-Detached", "F": "Flat/Maisonette", "D": "Detatched", "O": "Other"}
 geocoded['typedesc'] = geocoded['proptype_x'].map(prop_type_dict)
+region_dict = {"W99999999": "Wales", "E12000001": "North East", "E12000002": "North West", "E12000003": "Yorkshire and The Humber", "E12000004": "East Midlands", "E12000005": "West Midlands", "E12000006": "East of England", "E12000007": "London", "E12000008": "South East", "E12000009": "South West"}
+geocoded['region'] = geocoded['rgn'].map(region_dict)
 
 #create geodataframe from xy coordinate fields
 gdf = geopandas.GeoDataFrame(geocoded, geometry=geopandas.points_from_xy(geocoded.oseast1m,geocoded.osnrth1m)) 
@@ -80,30 +85,56 @@ gdf = gdf.set_crs(27700, allow_override=True)
 geocoded.to_csv('price_paid_2012_2022.csv')
 #gdf.to_file('price_paid_2012_2022.geojson', driver='geojson')
 
-# calc and plot average % increase price paid £ by urban - rural, property type and both
+# remove records of property type 'Other' - the group is both unhelpful and counts are too small to be statistically significant
+geocoded.drop(geocoded[geocoded.typedesc == 'Other'].index, inplace=True)
 
-#remove all groups 'in a sparse setting' as counts are too small / statistically insignificant
-geocoded.groupby(['urbrur11'])['perchange'].mean().reindex([ 'Hamlets and Isolated Dwellings', 'Village','Town and Fringe',  'City and Town', 'Minor Conurbation', 'Major Conurbation']).plot(kind='barh', color = '#abb8c3')
-plt.xlabel("% change price paid 2012-2022") # all of labels and title need changing if data changes
-plt.ylabel("Urban Rural Classification")
-plt.title("Average property value uplift 2012-2022 by Urban Rural Classification in England and Wales")
+# plot average % increase by:
 
-#remove 'other' as counts too small / statistically insignificant
+# grouped by both but only using main urban / rural marker , because too many counts are too small / statistically insignificant using the full urban - rural segmentation
+#geocoded.groupby(['urbrur11b', 'typedesc'])['perchange'].mean().plot(kind='barh', color = '#f78da7')
+#plt.xlabel("% change price paid 2012-2022") # all of labels and title need changing if data changes
+#plt.ylabel("Urban Rural Classification by property type")
+#plt.title("Average property value uplift 2012-2022 by Urban Rural Classification and property type in England and Wales")
+
+# grouped by by property type
 #geocoded.groupby(['typedesc'])['perchange'].mean().reindex(['Flat/Maisonette', 'Terraced', 'Semi-Detached', 'Detatched']).plot(kind='barh', color = '#f78da7')
 #plt.xlabel("% change price paid 2012-2022") # all of labels and title need changing if data changes
 #plt.ylabel("Property type")
 #plt.title("Average property value uplift 2012-2022 by property type in England and Wales")
 
-# segmented by both but only use urban / rural marker (needs calculating), because too many counts are too small / statistically insignificant using the full segmentation
-# segment type by region as well - field needs adding to geocode
+# grouped by full Urban Rural Classification
+# not showing all groups 'in a sparse setting' as counts are too small / statistically insignificant
+#geocoded.groupby(['urbrur11'])['perchange'].mean().reindex([ 'Hamlets and Isolated Dwellings', 'Village','Town and Fringe',  'City and Town', 'Minor Conurbation', 'Major Conurbation']).plot(kind='barh', color = '#abb8c3')
+#plt.xlabel("% change price paid 2012-2022") # all of labels and title need changing if data changes
+#plt.ylabel("Urban Rural Classification")
+#plt.title("Average property value uplift 2012-2022 by Urban Rural Classification in England and Wales")
 
-# return and export data tables as well as graphs, including counts to check statistical significance
+# grouped by region and property type
+geocoded.groupby(['region', 'typedesc'])['perchange'].mean().plot(kind='barh', color = '#f78da7')
+plt.xlabel("% change price paid 2012-2022") # all of labels and title need changing if data changes
+plt.ylabel("Region by property type")
+plt.title("Average property value uplift 2012-2022 by Region and property type in England and Wales")
+
+# grouped by region
+#geocoded.groupby(['region'])['perchange'].mean().plot(kind='barh', color = '#f78da7')
+#plt.xlabel("% change price paid 2012-2022") # all of labels and title need changing if data changes
+#plt.ylabel("Region by region")
+#plt.title("Average property value uplift 2012-2022 by region in England and Wales")
+
+
+# return and export data tables, including counts to check statistical significance
 groupby_proptype = geocoded.groupby(['urbrur11'])['perchange'].mean()
 groupby_proptype.to_csv('perchange_by_urban_rural_mean.csv')
 groupby_urbanrural = geocoded.groupby(['typedesc'])['perchange'].mean()
 groupby_urbanrural.to_csv('perchange_by_proptype_mean.csv')
 groupby_urbanrural_pt_ = geocoded.groupby(['typedesc', 'urbrur11b'])['perchange'].mean()
 groupby_urbanrural_pt_.to_csv('perchange_by_proptype_urban_rural_mean.csv')
+
+groupby_region_proptype = geocoded.groupby(['region', 'typedesc'])['perchange'].mean()
+groupby_region_proptype.to_csv('perchange_by_region_proptype_mean.csv')
+
+groupby_region = geocoded.groupby(['region'])['perchange'].mean()
+groupby_region.to_csv('perchange_by_region_mean.csv')
 
 groupby_proptypeb = geocoded.groupby(['urbrur11'])['perchange'].count()
 groupby_proptypeb.to_csv('perchange_by_urban_rural_counts.csv')
@@ -113,3 +144,9 @@ groupby_urbanrural_ptb = geocoded.groupby(['typedesc', 'urbrur11'])['perchange']
 groupby_urbanrural_ptb.to_csv('perchange_by_proptype_urban_ruralall_counts.csv')
 groupby_urbanrural_ptc = geocoded.groupby(['typedesc', 'urbrur11b'])['perchange'].count()
 groupby_urbanrural_ptc.to_csv('perchange_by_proptype_urban_rural_counts.csv')
+
+groupby_region_proptypeb = geocoded.groupby(['region', 'typedesc'])['perchange'].count()
+groupby_region_proptypeb.to_csv('perchange_by_region_proptype_counts.csv')
+
+groupby_regionb = geocoded.groupby(['region'])['perchange'].count()
+groupby_regionb.to_csv('perchange_by_region_counts.csv')
