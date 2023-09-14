@@ -11,9 +11,10 @@ Python3 script
 @author: @gaynora
 """
 import pandas
-import numpy
-import matplotlib.pyplot as plt
 import geopandas
+import geoplot as gplt
+import geoplot.crs as gcrs
+import mapclassify as mc
 
 #import price paid 2012 with headers and specified datatypes. Data source: https://www.gov.uk/government/statistical-data-sets/price-paid-data-downloads
 colnames=['pricepaid', 'date','postcode', 'proptype', 'tenure', 'PAON', 'SAON', 'street']
@@ -27,7 +28,7 @@ pp_2022.date = pandas.to_datetime(pp_2022['date'])
 # csv but also play around with API directly
 
 #append 2012 data together - row-wise
-pp_2012 = pp_2012_pt1.append(pp_2012_pt2, ignore_index=True)
+pp_2012 = pandas.concat([pp_2012_pt1, pp_2012_pt2], ignore_index=True)
 pp_2012_pt1.drop(pp_2012_pt1.index , inplace=True)
 pp_2012_pt2.drop(pp_2012_pt2.index , inplace=True)
 
@@ -65,7 +66,7 @@ joined = pp_2012.merge(pp_2022, left_on='concat2012', right_on='concat2022', how
 joined['perchange'] = (joined['pricepaid_y'] - joined['pricepaid_x']) / joined['pricepaid_y'] *100
 
 #geocode to perform spatial analysis
-onspd = pandas.read_csv('ONSPD_MAY_2023_UK.csv', usecols=[2,11,12, 17,40], header=0 ) # data source: https://geoportal.statistics.gov.uk/datasets/ons-postcode-directory-may-2023/about
+onspd = pandas.read_csv('ONSPD_MAY_2023_UK.csv', usecols=[2,11,12, 17,40, 42,43], header=0 ) # data source: https://geoportal.statistics.gov.uk/datasets/ons-postcode-directory-may-2023/about
 geocoded = joined.merge(onspd, left_on='postcode_y', right_on='pcds', how='left')
 #add additional descriptions to match codes
 urban_rural_class_dict = {"A1": "Major Conurbation", "B1": "Minor Conurbation", "C1": "City and Town", "C2": "City and Town in a Sparse Setting", "D1": "Town and Fringe", "D2":"Town and Fringe in a Sparse Setting", "E1": "Village", "E2": "Village in a Sparse Setting", "F1": "Hamlets and Isolated Dwellings", "F2": "Hamlets and Isolated Dwellings in a Sparse Setting"}
@@ -78,11 +79,11 @@ region_dict = {"W99999999": "Wales", "E12000001": "North East", "E12000002": "No
 geocoded['region'] = geocoded['rgn'].map(region_dict)
 
 #create geodataframe from xy coordinate fields
-gdf = geopandas.GeoDataFrame(geocoded, geometry=geopandas.points_from_xy(geocoded.oseast1m,geocoded.osnrth1m)) 
-gdf = gdf.set_crs(27700, allow_override=True)
+gdf = geopandas.GeoDataFrame(geocoded, geometry=geopandas.points_from_xy(geocoded.long,geocoded.lat)) 
+gdf = gdf.set_crs(4326, allow_override=True)
 
 #export all records - can be used elsewhere, particularly for web mapping if needed
-geocoded.to_csv('price_paid_2012_2022.csv')
+#geocoded.to_csv('price_paid_2012_2022.csv')
 #gdf.to_file('price_paid_2012_2022.geojson', driver='geojson')
 
 # remove records of property type 'Other' - the group is both unhelpful and counts are too small to be statistically significant
@@ -110,16 +111,40 @@ geocoded.drop(geocoded[geocoded.typedesc == 'Other'].index, inplace=True)
 #plt.title("Average property value uplift 2012-2022 by Urban Rural Classification in England and Wales")
 
 # grouped by region and property type
-geocoded.groupby(['region', 'typedesc'])['perchange'].mean().plot(kind='barh', color = '#f78da7')
-plt.xlabel("% change price paid 2012-2022") # all of labels and title need changing if data changes
-plt.ylabel("Region by property type")
-plt.title("Average property value uplift 2012-2022 by Region and property type in England and Wales")
+#geocoded.groupby(['region', 'typedesc'])['perchange'].mean().plot(kind='barh', color = '#f78da7')
+#plt.xlabel("% change price paid 2012-2022") # all of labels and title need changing if data changes
+#plt.ylabel("Region by property type")
+#plt.title("Average property value uplift 2012-2022 by Region and property type in England and Wales")
 
 # grouped by region
 #geocoded.groupby(['region'])['perchange'].mean().plot(kind='barh', color = '#f78da7')
 #plt.xlabel("% change price paid 2012-2022") # all of labels and title need changing if data changes
 #plt.ylabel("Region by region")
 #plt.title("Average property value uplift 2012-2022 by region in England and Wales")
+
+# Examine basic descriptive statistics of the percentage £ change
+print('minimum % change: ', geocoded['perchange'].min())
+print('maximum % change: ', geocoded['perchange'].max())
+print('mean % change: ', geocoded['perchange'].mean())
+
+# PLOT OVERALL FREQUENCY DISTRIBUTION OF % CHANGE
+# geoplot method - expects gdf input to be in lat-long
+
+scheme = mc.Quantiles(gdf['perchange'], k=5)
+extent = gdf.total_bounds
+ax = gplt.pointplot(
+    gdf,  
+    projection=gcrs.Mercator(),
+    extent=extent,
+    hue='perchange', 
+    cmap='inferno_r',
+    scheme=scheme,
+    legend=True, 
+    legend_var='hue',
+    figsize=(20,40),
+    legend_kwargs={'frameon': True, 'markersize':50, 'fontsize':34}
+)
+ax.set_title('% change price 2012-22 by property, England & Wales', fontsize=34)
 
 
 # return and export data tables, including counts to check statistical significance
@@ -149,4 +174,3 @@ groupby_region_proptypeb = geocoded.groupby(['region', 'typedesc'])['perchange']
 groupby_region_proptypeb.to_csv('perchange_by_region_proptype_counts.csv')
 
 groupby_regionb = geocoded.groupby(['region'])['perchange'].count()
-groupby_regionb.to_csv('perchange_by_region_counts.csv')
